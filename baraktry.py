@@ -53,8 +53,8 @@ for c in class_number:
     c_x_train = x_train_tensor[y_train_tensor == c]
     plt.plot(c_x_train[0], label="class " + str(c))
 plt.legend(loc="best")
-plt.show()
-plt.close()
+# plt.show()
+# plt.close()
 
 x_train_tensor = x_train_tensor.reshape((x_train_tensor.shape[0], 1, x_train_tensor.shape[1]))
 x_test_tensor = x_test_tensor.reshape((x_test_tensor.shape[0], 1, x_test_tensor.shape[1]))
@@ -144,7 +144,7 @@ class TCN(nn.Module):
         """Inputs have to have dimension (N, C_in, L_in)"""
         y1 = self.tcn(inputs)  # input should have dimension (N, C, L)
         o = self.linear(y1[:, :, -1])
-        return nn.Sigmoid(o)
+        return o
 
 num_classes = 20
 dropout = 0.1
@@ -240,7 +240,7 @@ for epoch in range(1, epochs + 1):
         inputs = inputs.to(device)
         labels = labels.to(device)
         # augmentation with `kornia` happens here inputs = aug_list(inputs)
-
+        labels = labels.to(torch.long)
         # forward + backward + optimize
         outputs = model(inputs)  # forward pass
         loss = criterion(outputs, labels)  # calculate the loss
