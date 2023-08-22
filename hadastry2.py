@@ -11,17 +11,21 @@ import torch
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from create_data_set import clean_data
-
+import os
 
 import argparse
 
 parser = argparse.ArgumentParser(description='Nanopore Signals Modeling')
-parser.add_argument('--batch_size', type=int, default=128, metavar='N',
-                    help='batch size (default: 128)')
-parser.add_argument('--epochs', type=int, default=20,
-                    help='upper epoch limit (default: 20)')
+parser.add_argument('--batch_size', type=int, default=256, metavar='N',
+                    help='batch size (default: 256)')
+parser.add_argument('--epochs', type=int, default=200,
+                    help='upper epoch limit (default: 200)')
 parser.add_argument('--ksize', type=int, default=50,
                     help='kernel size (default: 50)')
+parser.add_argument('--levels', type=int, default=8,
+                    help='number of levels (default: 8)')
+parser.add_argument('--nhids', type=int, default=25,
+                    help='number of hidden units per layer (default: 25)')
 args = parser.parse_args()
 
 
@@ -165,9 +169,9 @@ dropout = 0.1
 kernel_size = args.ksize
 print(f' ker size {kernel_size}')
 'number of hidden units per layer (default: 25)'
-nhids = 25
+nhids = args.nhids
 '# of levels (default: 8)'
-levels = 8
+levels = args.levels
 channel_sizes = [nhids] * levels
 input_channels = 1
 
@@ -246,6 +250,7 @@ for epoch in range(1, epochs + 1):
     running_loss = 0.0
     epoch_time = time.time()
     for i, data in enumerate(trainloader, 0):
+
         # get the inputs
         inputs, labels = data
         # send them to device
@@ -256,13 +261,14 @@ for epoch in range(1, epochs + 1):
         # forward + backward + optimize
         outputs = model(inputs)  # forward pass
         loss = criterion(outputs, labels)  # calculate the loss
+
         # always the same 3 steps
         optimizer.zero_grad()  # zero the parameter gradients
         loss.backward()  # backpropagation
         optimizer.step()  # update parameters
-        print(f'here')
         # print statistics
         running_loss += loss.data.item()
+
     # Normalizing the loss by the total number of train batches
     running_loss /= len(trainloader)
     # Calculate training/test set accuracy of the existing model
