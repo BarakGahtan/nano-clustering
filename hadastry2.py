@@ -1,17 +1,15 @@
-# import tensorflow as tf
-# import tensorflow.keras as keras
-# import keras.layers as layers
+import torch
 import torch.nn as nn
 from torch.nn.utils import weight_norm
-
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
-import torch
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from create_data_set import clean_data
 import os
+from torch.utils.data import Dataset, DataLoader
+
 
 import argparse
 
@@ -26,8 +24,23 @@ parser.add_argument('--levels', type=int, default=8,
                     help='number of levels (default: 8)')
 parser.add_argument('--nhids', type=int, default=25,
                     help='number of hidden units per layer (default: 25)')
+parser.add_argument('--num_classes', type=int, default=20,
+                    help='number of classes in data set (default: 20)')
 args = parser.parse_args()
 
+
+num_classes = args.num_classes
+dropout = 0.1
+kernel_size = args.ksize
+'number of hidden units per layer (default: 25)'
+nhids = args.nhids
+'# of levels (default: 8)'
+levels = args.levels
+channel_sizes = [nhids] * levels
+input_channels = 1
+batch_size = args.batch_size
+learning_rate = 1e-4
+epochs = args.epochs
 
 
 f_name  = f'/home/hadasabraham/SignalCluster/data/datasets/hadas_adir_barak_train.csv'
@@ -43,7 +56,7 @@ Y = data['barcode']
 y_signals = list(Y)
 y_signals2 = list(set(y_signals))
 # Example names vector (should have 20 names)
-class_number = [i for i in range(20)]
+class_number = [i for i in range(num_classes)]
 
 seed = 211
 
@@ -164,22 +177,7 @@ class TCN(nn.Module):
         o = self.linear(y1[:, :, -1])
         return o
 
-num_classes = 20
-dropout = 0.1
-kernel_size = args.ksize
-print(f' ker size {kernel_size}')
-'number of hidden units per layer (default: 25)'
-nhids = args.nhids
-'# of levels (default: 8)'
-levels = args.levels
-channel_sizes = [nhids] * levels
-input_channels = 1
 
-batch_size = args.batch_size
-print(f'batch size {batch_size}')
-learning_rate = 1e-4
-epochs = args.epochs
-print(f'epochs {epochs}')
 
 
 # device - cpu or gpu?
@@ -192,9 +190,8 @@ criterion = nn.CrossEntropyLoss()
 model = TCN(input_size = input_channels, output_size = num_classes, num_channels = channel_sizes, kernel_size = kernel_size, dropout = dropout).to(device) # no need for parameters as we alredy defined them in the class
 
 # optimizer - SGD, Adam, RMSProp...
+
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-#%%
-from torch.utils.data import Dataset, DataLoader
 # Define custom Dataset for the training data
 class MyDataset(Dataset):
     def __init__(self, x_data, y_data):
@@ -225,7 +222,7 @@ def calculate_accuracy(model, dataloader, device):
     model.eval() # put in evaluation mode,  turn of DropOut, BatchNorm uses learned statistics
     total_correct = 0
     total_signals = 0
-    confusion_matrix = np.zeros([20,20], int)
+    confusion_matrix = np.zeros([num_classes,num_classes], int)
     with torch.no_grad():
         for data in dataloader:
             signals, labels = data
@@ -243,7 +240,9 @@ def calculate_accuracy(model, dataloader, device):
 
 
 import time
-
+best_accuracy = 0.0  # Initialize the best accuracy
+lossvsepoch =[]
+meanloss =[]
 # training loop
 for epoch in range(1, epochs + 1):
     model.train()  # put in training mode, turn on DropOut, BatchNorm uses batch's statistics
@@ -271,6 +270,8 @@ for epoch in range(1, epochs + 1):
 
     # Normalizing the loss by the total number of train batches
     running_loss /= len(trainloader)
+    lossvsepoch.append(running_loss)
+    meanloss.append(np.mean(lossvsepoch))
     # Calculate training/test set accuracy of the existing model
     train_accuracy, _ = calculate_accuracy(model, trainloader, device)
     test_accuracy, _ = calculate_accuracy(model, testloader, device)
@@ -283,34 +284,54 @@ for epoch in range(1, epochs + 1):
     # log += f"Epoch Time: {epoch_time:.2f} secs"
     print(log)
 
-    # save model
-    if epoch % 20 == 0:
+    # Compare and save the model if accuracy is better
+    if test_accuracy > best_accuracy:
         print('==> Saving model ...')
         state = {
             'net': model.state_dict(),
             'epoch': epoch,
+            'accuracy': test_accuracy,
         }
         if not os.path.isdir('checkpoints'):
             os.mkdir('checkpoints')
-        torch.save(state, f'./checkpoints/tcn_{batch_size}batch_{kernel_size}ker_first_try.pth')
-
+        torch.save(state, f'./checkpoints/best_model_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid.pth')
+        best_accuracy = test_accuracy
 print('==> Finished Training ...')
 
-# # load model, calculate accuracy and confusion matrix
-# model = TCN().to(device)
-# state = torch.load('./checkpoints/cifar_cnn_ckpt.pth', map_location=device)
-# model.load_state_dict(state['net'])
-# # note: `map_location` is necessary if you trained on the GPU and want to run inference on the CPU
+# load model, calculate accuracy and confusion matrix
+model = TCN().to(device)
+state = torch.load(f'./checkpoints/best_model_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid.pth', map_location=device)
+model.load_state_dict(state['net'])
+# note: `map_location` is necessary if you trained on the GPU and want to run inference on the CPU
 
-# test_accuracy, confusion_matrix = calculate_accuracy(model, testloader, device)
-# print("test accuracy: {:.3f}%".format(test_accuracy))
+test_accuracy, confusion_matrix = calculate_accuracy(model, testloader, device)
+print("test accuracy: {:.3f}%".format(test_accuracy))
 
-# # plot confusion matrix
-# fig, ax = plt.subplots(1,1,figsize=(8,6))
-# ax.matshow(confusion_matrix, aspect='auto', vmin=0, vmax=1000, cmap=plt.get_cmap('Blues'))
-# plt.ylabel('Actual Category')
-# plt.yticks(range(10), classes)
-# plt.xlabel('Predicted Category')
-# plt.xticks(range(10), classes)
-# plt.show()
+# plot confusion matrix
+fig, ax = plt.subplots(1,1,figsize=(8,6))
+ax.matshow(confusion_matrix, aspect='auto', vmin=0, vmax=1000, cmap=plt.get_cmap('Blues'))
+plt.title(f'confusion matrix of tcn {batch_size}batch {kernel_size}ker {levels}l {nhids}hid')
+plt.ylabel('Actual Category')
+plt.yticks(range(num_classes), class_number)
+plt.xlabel('Predicted Category')
+plt.xticks(range(num_classes), class_number)
+plt.savefig(f'confusion_matrix_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid')
+
+#plot loss vs epochs
+fig = plt.figure(figsize=(40, 8))
+plt.plot(lossvsepoch)
+plt.title("Loss as a function of epochs")
+plt.xlabel("Epochs")
+plt.ylabel("Loss [%]")
+plt.ylim((0, 1))
+plt.savefig(f'lossvsepoch_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid')
+
+# plot meanloss vs epochs
+fig = plt.figure(figsize=(40, 8))
+plt.plot(meanloss)
+plt.title("Mean loss as a function of epochs")
+plt.xlabel("Epochs")
+plt.ylabel("Mean loss [%]")
+plt.ylim((0, 1))
+plt.savefig(f'meanlossvsepoch_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid')
 
