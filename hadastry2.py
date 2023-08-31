@@ -9,6 +9,9 @@ from sklearn.model_selection import train_test_split
 from create_data_set import clean_data
 import os
 from torch.utils.data import Dataset, DataLoader
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+
 
 
 import argparse
@@ -222,7 +225,7 @@ def calculate_accuracy(model, dataloader, device):
     model.eval() # put in evaluation mode,  turn of DropOut, BatchNorm uses learned statistics
     total_correct = 0
     total_signals = 0
-    confusion_matrix = np.zeros([num_classes,num_classes], int)
+    # confusion_matrix = np.zeros([num_classes,num_classes], int)
     with torch.no_grad():
         for data in dataloader:
             signals, labels = data
@@ -232,11 +235,13 @@ def calculate_accuracy(model, dataloader, device):
             _, predicted = torch.max(outputs.data, 1)
             total_signals += labels.size(0)
             total_correct += (predicted == labels).sum().item()
-            for i, l in enumerate(labels):
-                confusion_matrix[l.item(), predicted[i].item()] += 1
+            # for i, l in enumerate(labels):
+            #     confusion_matrix[l.item(), predicted[i].item()] += 1
+            cm = confusion_matrix(labels, predicted)
+
 
     model_accuracy = total_correct / total_signals * 100
-    return model_accuracy, confusion_matrix
+    return model_accuracy, cm
 
 
 import time
@@ -299,39 +304,44 @@ for epoch in range(1, epochs + 1):
 print('==> Finished Training ...')
 
 # load model, calculate accuracy and confusion matrix
-model = TCN().to(device)
+model = TCN(input_size = input_channels, output_size = num_classes, num_channels = channel_sizes, kernel_size = kernel_size, dropout = dropout).to(device)
 state = torch.load(f'./checkpoints/best_model_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid.pth', map_location=device)
 model.load_state_dict(state['net'])
 # note: `map_location` is necessary if you trained on the GPU and want to run inference on the CPU
 
-test_accuracy, confusion_matrix = calculate_accuracy(model, testloader, device)
+test_accuracy, cm = calculate_accuracy(model, testloader, device)
 print("test accuracy: {:.3f}%".format(test_accuracy))
 
-# plot confusion matrix
-fig, ax = plt.subplots(1,1,figsize=(8,6))
-ax.matshow(confusion_matrix, aspect='auto', vmin=0, vmax=1000, cmap=plt.get_cmap('Blues'))
-plt.title(f'confusion matrix of tcn {batch_size}batch {kernel_size}ker {levels}l {nhids}hid')
-plt.ylabel('Actual Category')
-plt.yticks(range(num_classes), class_number)
-plt.xlabel('Predicted Category')
-plt.xticks(range(num_classes), class_number)
+
+print(f'loss vs eppoch : {lossvsepoch}')
+print(f'meanloss vs eppoch : {meanloss}')
+
+# Plot confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=False,
+            xticklabels=[f'class {i}' for i in range (1,num_classes + 1)],
+            yticklabels=[f'class {i}' for i in range (1,num_classes + 1)])
+plt.xlabel("Predicted")
+plt.ylabel("True")
+plt.title("Confusion Matrix")
+plt.show()
 plt.savefig(f'confusion_matrix_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid')
 
 #plot loss vs epochs
-fig = plt.figure(figsize=(40, 8))
+plt.figure(figsize=(40, 8))
 plt.plot(lossvsepoch)
 plt.title("Loss as a function of epochs")
 plt.xlabel("Epochs")
 plt.ylabel("Loss [%]")
-plt.ylim((0, 1))
+plt.show()
 plt.savefig(f'lossvsepoch_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid')
 
 # plot meanloss vs epochs
-fig = plt.figure(figsize=(40, 8))
+plt.figure(figsize=(40, 8))
 plt.plot(meanloss)
 plt.title("Mean loss as a function of epochs")
 plt.xlabel("Epochs")
 plt.ylabel("Mean loss [%]")
-plt.ylim((0, 1))
+plt.show()
 plt.savefig(f'meanlossvsepoch_of_tcn_{batch_size}batch_{kernel_size}ker_{levels}l_{nhids}hid')
 
