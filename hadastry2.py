@@ -19,7 +19,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Nanopore Signals Modeling')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
                     help='batch size (default: 256)')
-parser.add_argument('--epochs', type=int, default=200,
+parser.add_argument('--epochs', type=int, default=500,
                     help='upper epoch limit (default: 200)')
 parser.add_argument('--ksize', type=int, default=50,
                     help='kernel size (default: 50)')
@@ -46,7 +46,7 @@ learning_rate = 1e-4
 epochs = args.epochs
 
 
-f_name  = f'/home/hadasabraham/SignalCluster/data/datasets/hadas_adir_barak_train.csv'
+f_name  = f'/home/barakg/nanoclustering/hadas_adir_barak_train.csv'
 # create_data_set(f_name, 20, 2, False)
 col_names = ['signal', 'barcode']
 data = pd.read_csv(f_name, index_col=0)
@@ -56,6 +56,7 @@ X = X.apply(eval).apply(lambda arr: np.array(arr, dtype=np.float32))
 X = X.apply(lambda x: clean_data(x,3000))
 
 Y = data['barcode']
+
 y_signals = list(Y)
 y_signals2 = list(set(y_signals))
 # Example names vector (should have 20 names)
@@ -185,7 +186,7 @@ class TCN(nn.Module):
 
 # device - cpu or gpu?
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+print(device)
 # loss criterion
 criterion = nn.CrossEntropyLoss()
 
@@ -230,14 +231,15 @@ def calculate_accuracy(model, dataloader, device):
         for data in dataloader:
             signals, labels = data
             signals = signals.to(device)
-            labels = labels.to(device)
+            labels = labels.cpu()
             outputs = model(signals)
             _, predicted = torch.max(outputs.data, 1)
+            predicted = predicted.cpu()
             total_signals += labels.size(0)
             total_correct += (predicted == labels).sum().item()
             # for i, l in enumerate(labels):
             #     confusion_matrix[l.item(), predicted[i].item()] += 1
-            cm = confusion_matrix(labels, predicted)
+            cm = confusion_matrix(labels.numpy(), predicted.numpy())
 
 
     model_accuracy = total_correct / total_signals * 100
@@ -270,6 +272,7 @@ for epoch in range(1, epochs + 1):
         optimizer.zero_grad()  # zero the parameter gradients
         loss.backward()  # backpropagation
         optimizer.step()  # update parameters
+        # print(f'here')
         # print statistics
         running_loss += loss.data.item()
 
